@@ -6,12 +6,13 @@ import "./IV2Router.sol";
 import "./IV2Factory.sol";
 import "../lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import "../lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
+import "forge-std/console.sol";
 
 contract SwapApp {
     using SafeERC20 for IERC20;
 
     address public V2Router02Address;
-    address private immutable WETHAddress = 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1;
+    address constant V2FactoryAddress = 0xf1D7CC64Fb4452F05c498126312eBE29f30Fbcf9;
 
     // Token Swaps
     event tokenSwap(
@@ -73,12 +74,13 @@ contract SwapApp {
         uint256 amountAMin_,
         uint256 amountBMin_,
         uint256 deadline_
-    ) external {
-        IERC20(path_[0]).safeTransferFrom(msg.sender, address(this), amountIn_);
-        uint256 tokensSwapped = swapTokens(amountIn_ / 2, amountOutMin_, path_, deadline_);
+    ) external returns (uint256 lpTokens) {
+        IERC20(path_[0]).safeTransferFrom(msg.sender, address(this), amountIn_ / 2);
+        uint256 tokensSwapped = _swapTokens(amountIn_ / 2, amountOutMin_, path_, deadline_);
         uint256 amountADesired = amountIn_ / 2;
-
-        (,, uint256 liquidity) = IV2Router(V2Router02Address).addLiquidity(
+        IERC20(path_[0]).approve(V2Router02Address, amountADesired);
+        IERC20(path_[path_.length - 1]).approve(V2Router02Address, tokensSwapped);
+        (,, lpTokens) = IV2Router(V2Router02Address).addLiquidity(
             path_[0],
             path_[path_.length - 1],
             amountADesired,
@@ -89,7 +91,7 @@ contract SwapApp {
             deadline_
         );
 
-        emit liquidityAdded(msg.sender, path_[0], path_[path_.length - 1], liquidity);
+        emit liquidityAdded(msg.sender, path_[0], path_[path_.length - 1], lpTokens);
     }
 
     function removeLiquidity(
@@ -98,14 +100,17 @@ contract SwapApp {
         uint256 amountAMin_,
         uint256 amountBMin_,
         uint256 deadline_
-    ) external {
-        address factory = IV2Router(V2Router02Address).factory();
-        address pairAddress = IUniswapV2Factory(factory).getPair(tokenA_, tokenB_);
+    ) external returns (uint256 amountA, uint256 amountB) {
+        address pairAddress = IUniswapV2Factory(V2FactoryAddress).getPair(tokenA_, tokenB_);
         uint256 userLpTokens = IERC20(pairAddress).balanceOf(msg.sender);
 
-        require(userLpTokens > 0, "No Liquidity");
+        IERC20(pairAddress).safeTransferFrom(msg.sender, address(this), userLpTokens);
+        IERC20(pairAddress).approve(V2Router02Address, userLpTokens);
+     
+        uint256 allowance = IERC20(pairAddress).allowance(msg.sender, address(this));
+        console.log("Allowance before removeLiquidity:", allowance);
 
-        (uint256 amountA, uint256 amountB) = IV2Router(V2Router02Address).removeLiquidity(
+        (amountA, amountB) = IV2Router(V2Router02Address).removeLiquidity(
             tokenA_, tokenB_, userLpTokens, amountAMin_, amountBMin_, msg.sender, deadline_
         );
 
@@ -116,5 +121,20 @@ contract SwapApp {
     function getAmountOutHelper(uint256 amountIn_, address[] calldata path_) public view returns (uint256 amountOut) {
         uint256[] memory amounts = IV2Router(V2Router02Address).getAmountsOut(amountIn_, path_);
         amountOut = amounts[amounts.length - 1];
+    }
+
+    function _swapTokens(uint256 amountIn_, uint256 amountOutMin_, address[] memory path_, uint256 deadline_)
+        internal
+        returns (uint256 tokenOut_)
+    {
+        IERC20(path_[0]).safeTransferFrom(msg.sender, address(this), amountIn_);
+        IERC20(path_[0]).approve(V2Router02Address, amountIn_);
+        uint256[] memory amountsOut = IV2Router(V2Router02Address).swapExactTokensForTokens(
+            amountIn_, amountOutMin_, path_, address(this), deadline_
+        );
+
+        tokenOut_ = amountsOut[amountsOut.length - 1];
+
+        emit tokenSwap(msg.sender, path_[0], path_[path_.length - 1], amountIn_, tokenOut_);
     }
 }
