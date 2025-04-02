@@ -106,7 +106,7 @@ contract SwapApp {
 
         IERC20(pairAddress).safeTransferFrom(msg.sender, address(this), userLpTokens);
         IERC20(pairAddress).approve(V2Router02Address, userLpTokens);
-     
+
         uint256 allowance = IERC20(pairAddress).allowance(msg.sender, address(this));
         console.log("Allowance before removeLiquidity:", allowance);
 

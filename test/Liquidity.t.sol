@@ -67,7 +67,8 @@ contract SwapTest is Test {
         vm.startPrank(arbUser);
 
         IERC20(USDT).approve(address(app), amountIn);
-        uint256 lpTokens = app.addLiquidityWithTokenA(amountIn, path, amountOutMin, amountOutMin, amountOutMin, deadline);
+        uint256 lpTokens =
+            app.addLiquidityWithTokenA(amountIn, path, amountOutMin, amountOutMin, amountOutMin, deadline);
 
         uint256 tokenABalanceBefore = IERC20(USDT).balanceOf(arbUser);
         uint256 tokenBBalanceBefore = IERC20(USDC).balanceOf(arbUser);
